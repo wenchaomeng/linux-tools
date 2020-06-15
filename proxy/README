@@ -1,2 +1,19 @@
-文章说明
+
+- proxy初始版文章
 	https://blog.csdn.net/dog250/article/details/103629054
+- 使用：cgroup2
+	- 新建CGROUP
+		-  sudo mkdir -p /sys/fs/cgroup/bpf
+	- https://www.kernel.org/doc/Documentation/cgroup-v2.txt
+	- 设置启动参数:cgroup_no_v1=all
+- 运行流程
+	- 运行 ./build.sh
+	- 运行 run_redis_and_set_cgroup.sh [提前安装Redis]
+	- nc -kl 4321
+	- ./run.sh
+	- telnet localhost 6379
+		- 输入: a
+			- 可以看到数据转到了NC的4321端口
+		- 从nc输入结果，比如: OK
+			- 可以看到结果转回了telnet终端
+		
