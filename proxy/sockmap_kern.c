@@ -36,15 +36,27 @@ int bpf_prog2(struct __sk_buff *skb)
 	__u16 port = (__u16)bpf_ntohl(skb->remote_port);
 	char info_fmt[] = "data to port [%d]\n";
         __u8 *d = data;
-
-	
+        int ret = SK_PASS, i;
 
 	bpf_trace_printk(info_fmt, sizeof(info_fmt), port);
+
+
 	index = bpf_map_lookup_elem(&proxy_map, &port);
 	if (index == NULL)
 		return SK_PASS;
 	bpf_printk("bpf_prog2: redirest to index:%d\n", *index);
-	return bpf_sk_redirect_map(skb, &sock_map, *index, 0);
+	ret = bpf_sk_redirect_map(skb, &sock_map, *index, 0);
+
+        //pass delete from sockmap
+        if ( port == AUTH_PORT ){
+	        bpf_printk("bpf_prog2: from auth server ok, remove socket in sockmap\n");
+                i = 0;
+                err = bpf_map_delete_elem(&sock_map, &i);
+                if( err ){
+                        bpf_printk("bpf_prog2: remove error: %s\n", strerror(errno));
+                }
+        }
+        return ret;
 }
 
 

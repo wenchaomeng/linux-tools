@@ -149,6 +149,18 @@ static int join_cgroup_from_top(char *cgroup_path)
 	close(fd);
 	return rc;
 }
+int prog_attach(int prog_fd, int map_fd, bpf_attach_type attach_type){
+
+	int err = 0;
+
+    err = bpf_prog_attach(prog_fd, map_fd, attach_type, 0);
+    if (err) {
+                fprintf(stderr, "ERROR: bpf_prog_attach (groups): prog_fd:%d, map(cgroup)_fd:%d, %d (%s)\n",
+                        progs_fd[2], map_fd, err, strerror(errno));
+	}
+
+    return err;
+}
 
 int main(int argc, char **argv)
 {
@@ -182,14 +194,10 @@ int main(int argc, char **argv)
 	sockmap_fd = maps_fd[1];
 
 	//attach prog
-	bpf_prog_attach(progs_fd[0], sockmap_fd, BPF_SK_SKB_STREAM_PARSER, 0);
-	bpf_prog_attach(progs_fd[1], sockmap_fd, BPF_SK_SKB_STREAM_VERDICT, 0);
-        err = bpf_prog_attach(progs_fd[2], cg_fd, BPF_CGROUP_SOCK_OPS, 0);
-        if (err) {
-                fprintf(stderr, "ERROR: bpf_prog_attach (groups): prog_fd:%d, fd:%d, %d (%s)\n",
-                        progs_fd[2], cg_fd, err, strerror(errno));
-                return err;
-        }
+	prog_attach(progs_fd[0], sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
+	prog_attach(progs_fd[1], sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
+    prog_attach(progs_fd[2], cg_fd, BPF_CGROUP_SOCK_OPS);
+
 	
 	proxysd1 = connectToAuthServer(argv[1], argv[2]);
 
@@ -227,6 +235,7 @@ int main(int argc, char **argv)
 		bpf_map_update_elem(sockmap_fd, &key, &proxysd1, BPF_ANY);
 	}
 	
+	printf("press any key to continue!");
 	getchar();
 
 	bpf_prog_detach2(progs_fd[2], cg_fd, BPF_CGROUP_SOCK_OPS);
