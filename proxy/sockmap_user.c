@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <signal.h>
+#include <arpa/inet.h>
 #include "bpf_load.h"
 #include "bpf_util.h"
 
@@ -46,13 +47,13 @@ char *map_names[] = {
 int prog_attach_type[] = {
 	BPF_SK_SKB_STREAM_PARSER,
 	BPF_SK_SKB_STREAM_VERDICT,
-	BPF_CGROUP_SOCK_OPS,
+	BPF_CGROUP_SOCK_OPS
 };
 
 int prog_type[] = {
 	BPF_PROG_TYPE_SK_SKB,
 	BPF_PROG_TYPE_SK_SKB,
-	BPF_PROG_TYPE_SOCK_OPS,
+	BPF_PROG_TYPE_SOCK_OPS
 };
 
 static int populate_progs(char *bpf_file)
@@ -62,8 +63,11 @@ static int populate_progs(char *bpf_file)
 	int i = 0;
 	long err;
 
+	printf("-------------\n");
 	obj = bpf_object__open(bpf_file);
+	printf("-------------\n");
 	err = libbpf_get_error(obj);
+	printf("-------------\n");
 	if (err) {
 		char err_buf[256];
 
@@ -98,6 +102,20 @@ static int populate_progs(char *bpf_file)
 	}
 
 	return 0;
+}
+
+#define SOCKMAP_PARSE_PROG "./sockmap_parse_prog.o"
+int parse_prog = 0;
+void loadParseProg(){
+	int err;
+	struct bpf_object *obj;
+
+	
+	err = bpf_prog_load(SOCKMAP_PARSE_PROG,
+			    BPF_PROG_TYPE_SK_SKB, &obj, &parse_prog);
+	if (err) {
+		printf("Failed to load SK_SKB parse prog\n");
+	}
 }
 
 int connectToAuthServer(char *host, char* port){
@@ -149,17 +167,30 @@ static int join_cgroup_from_top(char *cgroup_path)
 	close(fd);
 	return rc;
 }
-int prog_attach(int prog_fd, int map_fd, bpf_attach_type attach_type){
+int prog_attach(int prog_fd, char *desc, int map_fd, enum bpf_attach_type attach_type){
 
 	int err = 0;
 
     err = bpf_prog_attach(prog_fd, map_fd, attach_type, 0);
     if (err) {
-                fprintf(stderr, "ERROR: bpf_prog_attach (groups): prog_fd:%d, map(cgroup)_fd:%d, %d (%s)\n",
-                        progs_fd[2], map_fd, err, strerror(errno));
+                fprintf(stderr, "ERROR: bpf_prog_attach (groups) (%s) : prog_fd:%d, map(cgroup)_fd:%d, %d (%s)\n",
+                        desc, progs_fd[2], map_fd, err, strerror(errno));
 	}
 
     return err;
+}
+
+int prog_detach(int prog_fd, char *desc, int map_fd, enum bpf_attach_type attach_type){
+
+	int err = 0;
+    err = bpf_prog_detach2(prog_fd, map_fd, attach_type);
+    if (err) {
+                fprintf(stderr, "ERROR: bpf_prog_detach (groups) (%s) : prog_fd:%d, map(cgroup)_fd:%d, %d (%s)\n",
+                        desc, progs_fd[2], map_fd, err, strerror(errno));
+	}
+
+    return err;
+
 }
 
 int main(int argc, char **argv)
@@ -170,7 +201,7 @@ int main(int argc, char **argv)
 	int maxfd = 10;
 	int cg_fd;
 	int err;
-
+	
 	if (argc != 3) {
 		printf("argc %d, expected: 3 \n", argc);
                 exit(1);
@@ -189,20 +220,22 @@ int main(int argc, char **argv)
 	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
 	populate_progs(filename);
 
+//	loadParseProg();
+
 
 	proxymap_fd = maps_fd[0];
 	sockmap_fd = maps_fd[1];
 
 	//attach prog
-	prog_attach(progs_fd[0], sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
-	prog_attach(progs_fd[1], sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
-    prog_attach(progs_fd[2], cg_fd, BPF_CGROUP_SOCK_OPS);
+	prog_attach(progs_fd[0], "parse prog", sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
+	//prog_attach(parse_prog, "parse prog", sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
+	prog_attach(progs_fd[1], "verdict prog", sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
+    prog_attach(progs_fd[2], "sock ops" , cg_fd, BPF_CGROUP_SOCK_OPS);
 
 	
 	proxysd1 = connectToAuthServer(argv[1], argv[2]);
 
 	//set proxy map
-
 	if (0){
 		struct sockaddr_in addr;
 		int s1;
@@ -238,9 +271,9 @@ int main(int argc, char **argv)
 	printf("press any key to continue!");
 	getchar();
 
-	bpf_prog_detach2(progs_fd[2], cg_fd, BPF_CGROUP_SOCK_OPS);
-	bpf_prog_detach2(progs_fd[1], sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
-	bpf_prog_detach2(progs_fd[0], sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
+	prog_detach(progs_fd[2], "sock ops",  cg_fd, BPF_CGROUP_SOCK_OPS);
+	prog_detach(progs_fd[1], "verdict",  sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
+	prog_detach(progs_fd[0], "parse", sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
 
 	close(cg_fd);
 	return 0;
