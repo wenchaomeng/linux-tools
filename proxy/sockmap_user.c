@@ -228,36 +228,10 @@ int main(int argc, char **argv)
 
 	//attach prog
 	prog_attach(progs_fd[0], "parse prog", sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
-	//prog_attach(parse_prog, "parse prog", sockmap_fd, BPF_SK_SKB_STREAM_PARSER);
 	prog_attach(progs_fd[1], "verdict prog", sockmap_fd, BPF_SK_SKB_STREAM_VERDICT);
     prog_attach(progs_fd[2], "sock ops" , cg_fd, BPF_CGROUP_SOCK_OPS);
 
-	
 	proxysd1 = connectToAuthServer(argv[1], argv[2]);
-
-	//set proxy map
-	if (0){
-		struct sockaddr_in addr;
-		int s1;
-		int port = 6379;
-		s1 = socket(AF_INET, SOCK_STREAM, 0);;
-		memset(&addr, 0, sizeof(struct sockaddr_in));
-		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-		addr.sin_port = htons(port);
-		err = bind(s1, (struct sockaddr *)&addr, sizeof(addr));
-		if (err < 0) {
-			perror("bind s1 failed()");
-			return errno;
-		}
-		addr.sin_port = htons(port);
-		err = listen(s1, 32);
-		if (err < 0) {
-			perror("listen s1 failed()");
-			return errno;
-		}
-	}
-
 
 	if( 1 ){
 		int port1 = atoi(argv[2]);
